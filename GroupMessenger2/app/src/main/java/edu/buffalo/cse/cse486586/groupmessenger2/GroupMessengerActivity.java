@@ -1,14 +1,11 @@
 package edu.buffalo.cse.cse486586.groupmessenger2;
 
 import android.app.Activity;
-import android.content.ComponentCallbacks2;
 import android.content.ContentValues;
 import android.content.Context;
 import android.net.Uri;
-import android.nfc.Tag;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.SystemClock;
 import android.telephony.TelephonyManager;
 import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
@@ -22,37 +19,28 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.InterfaceAddress;
-import java.util.ArrayList;
+
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.Collection;
+
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 
-/**
- * GroupMessengerActivity is the main Activity for the assignment.
- *
- * @author stevko
- *
- */
 /*
-
-References for the ISIS algorithm for total ordering included :
-1. Lecture slides
-2. Birman, K. and Joseph, T.  Reliable Communication in the Presence of Failures. In ACM Transactions on Computer Systems 5, 1 (February 1987), 47-76
-3. Coulouris, G., Dollimore, J. and Kindberg, T.  Distributed Systems: Concepts and Design. 4thedition (2005), Addison-Wesley.
-4. https://courses.engr.illinois.edu/cs425/fa2009/L5tmp.ppt
-5. https://studylib.net/doc/7830646/isis-algorithm-for-total-ordering-of-messages
-Though the mentioned references have been used for algorithm understanding, the implementation is completely self done.
- */
+* References for the ISIS algorithm for total ordering included :
+* 1. Lecture slides
+* 2. Birman, K. and Joseph, T.  Reliable Communication in the Presence of Failures. In ACM Transactions on Computer Systems 5, 1 (February 1987), 47-76
+* 3. Coulouris, G., Dollimore, J. and Kindberg, T.  Distributed Systems: Concepts and Design. 4thedition (2005), Addison-Wesley.
+* 4. https://courses.engr.illinois.edu/cs425/fa2009/L5tmp.ppt
+* 5. https://studylib.net/doc/7830646/isis-algorithm-for-total-ordering-of-messages
+* Though the mentioned references have been used for algorithm understanding, the implementation is completely self done.
+*/
+// Message class contains all the message details
 class Message implements Comparable<Message>{
     String message = "";
     Integer messageId = 0;
@@ -89,21 +77,32 @@ class Seq {
     Integer seqNum = 0;
     Integer processId = 0;
 }
+
+// GroupMessengerActivity is the main Activity.
 public class GroupMessengerActivity extends Activity {
     static final String TAG = GroupMessengerActivity.class.getSimpleName();
+    
+    // Fixed redirection ports for 5 AVD's
     static final String REMOTE_PORT0 = "11108";
     static final String REMOTE_PORT1 = "11112";
     static final String REMOTE_PORT2 = "11116";
     static final String REMOTE_PORT3 = "11120";
     static final String REMOTE_PORT4 = "11124";
+    
+    // Server socket listening port
+    static final int SERVER_PORT = 10000;
+    
+    // Fields to store key:message ID and value:message
     private static final String KEY_FIELD = "key";
     private static final String VALUE_FIELD = "value";
+    
+    // Message ID represented as a sequence number
     private static int sequenceNum = 0;
     private static int serverSideCount = 0; // s(i)
     private static int clientSideCount = 0; // counter(i)
     private static ArrayList<Seq> testList;
     private static ArrayList<String> serverList;
-    static final int SERVER_PORT = 10000;
+
     private static List<Message> queue = new LinkedList<Message>();
     private static final HashMap<Integer, Integer> map = new HashMap<Integer, Integer>();
     private static final HashMap<String, Boolean> map2 = new HashMap<String, Boolean>();
@@ -116,6 +115,7 @@ public class GroupMessengerActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_group_messenger);
+        
         // Getting the port number of myself(AVD)
         TelephonyManager tel = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
         String portStr = tel.getLine1Number().substring(tel.getLine1Number().length() - 4);
@@ -123,6 +123,7 @@ public class GroupMessengerActivity extends Activity {
         myPor = Integer.parseInt(myPort);
 
         // As we did in the PA1, lets create a server asynTask and client asyncTask
+        // Server task invocation
         try {
             ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
             new ServerTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, serverSocket);
@@ -130,26 +131,19 @@ public class GroupMessengerActivity extends Activity {
             Log.e(TAG, "Error in creating a socket");
             return;
         }
-        /*
-         * TODO: Use the TextView to display your messages. Though there is no grading component
-         * on how you display the messages, if you implement it, it'll make your debugging easier.
-         */
+        
+        // Using the TextView to display messages to make debugging easier
         TextView tv = (TextView) findViewById(R.id.textView1);
         tv.setMovementMethod(new ScrollingMovementMethod());
 
-        /*
-         * Registers OnPTestClickListener for "button1" in the layout, which is the "PTest" button.
-         * OnPTestClickListener demonstrates how to access a ContentProvider.
-         */
+        // Registers OnPTestClickListener for "button1" in the layout, which is the "PTest" button.
+        // OnPTestClickListener demonstrates how to access a ContentProvider. 
         findViewById(R.id.button1).setOnClickListener(
                 new OnPTestClickListener(tv, getContentResolver()));
 
-        /*
-         * TODO: You need to register and implement an OnClickListener for the "Send" button.
-         * In your implementation you need to get the message from the input box (EditText)
-         * and send it to other AVDs.
-         */
-
+        // Registering and implementing an OnClickListener for the "Send" button.
+        // Getting the message from the input box (EditText) and sending it to other AVDs.
+        // Creating editText to display 
         final EditText editText = (EditText) findViewById(R.id.editText1);
         findViewById(R.id.button4).setOnClickListener(new View.OnClickListener() {
             @Override
@@ -160,7 +154,8 @@ public class GroupMessengerActivity extends Activity {
                 localTextView.append("\t" + msg); // This is one way to display a string.
                 TextView remoteTextView = (TextView) findViewById(R.id.textView1);
                 remoteTextView.append("\n");
-
+                    
+                // Client task invocation
                 new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, myPort);
 
             }
@@ -371,44 +366,51 @@ public class GroupMessengerActivity extends Activity {
                 }
             }
         }
-
+       
+        /* -------------------------------------------------------------------------------
+        * @Override
+        * @name onProgressUpdate() 
+        * @desc This method displays what is received in doInBackground().  
+        * @param strings
+        * @return void
+        ---------------------------------------------------------------------------------- */
         protected void onProgressUpdate(String...strings) {
-            /*
-             * The following code displays what is received in doInBackground().
-             */
             String strReceived = strings[0].trim();
-            //String[] str = strReceived.split(" ");
             TextView remoteTextView = (TextView) findViewById(R.id.textView1);
             remoteTextView.append(strReceived + "\t\n");
             TextView localTextView = (TextView) findViewById(R.id.textView1);
             localTextView.append("\n");
-            // insert into database
-            // Need to create Uri object and contentValue to insert
-
-            //Building URI object
+            
+            // Need to build Uri object and ContentValues to insert the message into the file system
+            // Building URI object
             Uri uri = Uri.parse("content://edu.buffalo.cse.cse486586.groupmessenger2.provider");
+            
             // Building ContentValues Object
             ContentValues contVal = new ContentValues();
             contVal.put(KEY_FIELD, Integer.toString(sequenceNum));
             contVal.put(VALUE_FIELD,strReceived);
             sequenceNum++;
+            
             // Inserting
             getContentResolver().insert(uri, contVal);
             return;
         }
     }
 
-    /***
-     * ClientTask is an AsyncTask that should send a string over the network.
-     * It is created by ClientTask.executeOnExecutor() call whenever OnKeyListener.onKey() detects
-     * an enter key press event.
-     *
-     * @author stevko
-     *
-     */
+    /* ---------------------------------------------------------------
+    * ClientTask is an AsyncTask that should send a string over the
+    * network. It is created by ClientTask.executeOnExecutor() call 
+    * whenever OnKeyListener.onKey() detects an enter key press event.
+    ----------------------------------------------------------------*/
     private class ClientTask extends AsyncTask<String, Void, Void> {
 
-        @Override
+        /* -------------------------------------------------------------------------------
+        * @Override
+        * @name doInBackground() 
+        * @desc This method sends messages to all the AVD's  
+        * @param msgs
+        * @return Void
+        ---------------------------------------------------------------------------------- */
         protected Void doInBackground(String... msgs) {
             try {
                 // So need to send messages for all of the AVD's including myself
